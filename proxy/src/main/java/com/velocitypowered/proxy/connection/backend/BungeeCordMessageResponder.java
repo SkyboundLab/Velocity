@@ -87,7 +87,7 @@ public class BungeeCordMessageResponder {
     }
 
     proxy.getServer(serverName).ifPresent(server -> {
-      if (queue && proxy.getQueueManager().isEnabled()) {
+      if (queue && proxy.getQueueManager().isQueueEnabled()) {
         if (this.proxy.getConfiguration().getQueue().getNoQueueServers().contains(server.getServerInfo().getName())) {
           player.createConnectionRequest(server).connectWithIndication();
           return;
@@ -116,7 +116,7 @@ public class BungeeCordMessageResponder {
         return;
       }
 
-      if (queue && proxy.getQueueManager().isEnabled()) {
+      if (queue && proxy.getQueueManager().isQueueEnabled()) {
         if (this.proxy.getConfiguration().getQueue().getNoQueueServers().contains(referencedServer.get().getServerInfo().getName())) {
           player.createConnectionRequest(referencedServer.get()).connectWithIndication();
           return;
@@ -153,7 +153,7 @@ public class BungeeCordMessageResponder {
         out.writeUTF("ALL");
 
         int amount;
-        if (proxy.getMultiProxyHandler().isEnabled()) {
+        if (proxy.getMultiProxyHandler().isRedisEnabled()) {
           amount = proxy.getMultiProxyHandler().getTotalPlayerCount();
         } else {
           amount = proxy.getPlayerCount();
@@ -165,7 +165,7 @@ public class BungeeCordMessageResponder {
           out.writeUTF(rs.getServerInfo().getName());
 
           int amount = 0;
-          if (proxy.getMultiProxyHandler().isEnabled()) {
+          if (proxy.getMultiProxyHandler().isRedisEnabled()) {
             for (RemotePlayerInfo info : proxy.getMultiProxyHandler().getAllPlayers()) {
               if (info.getServerName() != null && info.getServerName().equalsIgnoreCase(rs.getServerInfo().getName())) {
                 amount++;
@@ -214,17 +214,11 @@ public class BungeeCordMessageResponder {
     ByteBuf buf = Unpooled.buffer();
 
     String queuedServer = null;
-    if (this.proxy.getMultiProxyHandler().isEnabled()) {
-      RemotePlayerInfo info = proxy.getMultiProxyHandler().getPlayerInfo(playerUuid);
-      if (info.getQueuedServer() != null) {
-        queuedServer = info.getQueuedServer();
-      }
-    } else {
-      for (ServerQueueStatus status : proxy.getQueueManager().getAll()) {
-        if (status.isQueued(playerUuid)) {
-          queuedServer = status.getServerName();
-          break;
-        }
+
+    for (ServerQueueStatus status : proxy.getQueueManager().getAll()) {
+      if (status.isQueued(playerUuid)) {
+        queuedServer = status.getServerName();
+        break;
       }
     }
 
@@ -247,25 +241,10 @@ public class BungeeCordMessageResponder {
     ByteBuf buf = Unpooled.buffer();
     int position = -1;
 
-    if (proxy.getMultiProxyHandler().isEnabled()) {
-      RemotePlayerInfo info = proxy.getMultiProxyHandler().getPlayerInfo(playerUuid);
-
-      if (!proxy.getQueueManager().isMasterProxy()) {
-        return;
-      }
-
-      if (info != null && info.getQueuedServer() != null) {
-        ServerQueueStatus status = proxy.getQueueManager().getQueue(info.getQueuedServer());
-        if (status != null && status.isQueued(playerUuid)) {
-          position = status.getQueuePosition(playerUuid);
-        }
-      }
-    } else {
-      for (ServerQueueStatus status : proxy.getQueueManager().getAll()) {
-        if (status.isQueued(playerUuid)) {
-          position = status.getQueuePosition(playerUuid);
-          break;
-        }
+    for (ServerQueueStatus status : proxy.getQueueManager().getAll()) {
+      if (status.isQueued(playerUuid)) {
+        position = status.getQueuePosition(playerUuid);
+        break;
       }
     }
 
@@ -288,25 +267,10 @@ public class BungeeCordMessageResponder {
     ByteBuf buf = Unpooled.buffer();
     int position = -1;
 
-    if (this.proxy.getMultiProxyHandler().isEnabled()) {
-      RemotePlayerInfo info = proxy.getMultiProxyHandler().getPlayerInfo(playerUuid);
-
-      if (!proxy.getQueueManager().isMasterProxy()) {
-        return;
-      }
-
-      if (info != null && info.getQueuedServer() != null) {
-        ServerQueueStatus status = proxy.getQueueManager().getQueue(info.getQueuedServer());
-        if (status != null && status.isQueued(playerUuid)) {
-          position = status.getSize();
-        }
-      }
-    } else {
-      for (ServerQueueStatus status : proxy.getQueueManager().getAll()) {
-        if (status.isQueued(playerUuid)) {
-          position = status.getSize();
-          break;
-        }
+    for (ServerQueueStatus status : proxy.getQueueManager().getAll()) {
+      if (status.isQueued(playerUuid)) {
+        position = status.getSize();
+        break;
       }
     }
 
@@ -330,25 +294,10 @@ public class BungeeCordMessageResponder {
 
     boolean paused = false;
 
-    if (this.proxy.getMultiProxyHandler().isEnabled()) {
-      RemotePlayerInfo info = proxy.getMultiProxyHandler().getPlayerInfo(playerUuid);
-
-      if (!proxy.getQueueManager().isMasterProxy()) {
-        return;
-      }
-
-      if (info != null && info.getQueuedServer() != null) {
-        ServerQueueStatus status = proxy.getQueueManager().getQueue(info.getQueuedServer());
-        if (status != null && status.isQueued(playerUuid)) {
-          paused = status.isPaused();
-        }
-      }
-    } else {
-      for (ServerQueueStatus status : proxy.getQueueManager().getAll()) {
-        if (status.isQueued(playerUuid)) {
-          paused = true;
-          break;
-        }
+    for (ServerQueueStatus status : proxy.getQueueManager().getAll()) {
+      if (status.isQueued(playerUuid)) {
+        paused = true;
+        break;
       }
     }
 

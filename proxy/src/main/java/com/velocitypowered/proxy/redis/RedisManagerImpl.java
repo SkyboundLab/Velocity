@@ -26,6 +26,9 @@ import com.velocitypowered.proxy.VelocityServer;
 import com.velocitypowered.proxy.config.VelocityConfiguration;
 import com.velocitypowered.proxy.connection.client.ConnectedPlayer;
 import com.velocitypowered.proxy.plugin.virtual.VelocityVirtualPlugin;
+import com.velocitypowered.proxy.queue.ServerQueueEntry;
+import com.velocitypowered.proxy.queue.ServerQueueStatus;
+import com.velocitypowered.proxy.queue.cache.SerializableQueue;
 import com.velocitypowered.proxy.redis.multiproxy.RedisGetPlayerPingRequest;
 import com.velocitypowered.proxy.redis.multiproxy.RedisPlayerSetTransferringRequest;
 import com.velocitypowered.proxy.redis.multiproxy.RedisSendMessage;
@@ -55,6 +58,7 @@ import redis.clients.jedis.JedisClientConfig;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
 import redis.clients.jedis.JedisPubSub;
+import redis.clients.jedis.exceptions.JedisDataException;
 import redis.clients.jedis.exceptions.JedisException;
 
 /**
@@ -68,6 +72,7 @@ import redis.clients.jedis.exceptions.JedisException;
 public class RedisManagerImpl {
   private static final String CHANNEL = "velocityredis";
   private static final String CACHE_KEY = "remote-players";
+  private static final String QUEUE_CACHE_KEY = "queue-cache";
 
   private static final Logger logger = LoggerFactory.getLogger(RedisManagerImpl.class);
   private static final Gson gson = new Gson();
@@ -104,9 +109,9 @@ public class RedisManagerImpl {
     listen(RedisGetPlayerPingRequest.ID, RedisGetPlayerPingRequest.class, it -> {
       proxy.getPlayer(it.playerToCheck()).ifPresent(player -> {
         Component component = Component.translatable("velocity.command.ping.other",
-                        NamedTextColor.GREEN)
-                        .arguments(Component.text(player.getUsername()),
-                                Component.text(player.getPing()));
+            NamedTextColor.GREEN)
+               .arguments(Component.text(player.getUsername()),
+                   Component.text(player.getPing()));
 
         send(new RedisSendMessage(it.commandSender(), component));
       });
@@ -255,11 +260,9 @@ public class RedisManagerImpl {
     String json = gson.toJson(player);
 
     try (Jedis jedis = this.jedisPool.getResource()) {
-      if (!"hash".equals(jedis.type(CACHE_KEY))) {
-        jedis.del(CACHE_KEY);
-      }
-
       jedis.hset(CACHE_KEY, player.getUuid().toString(), json);
+    } catch (JedisDataException ignored) {
+      // Ignore raw hash due to redundant logging.
     } catch (Exception e) {
       e.printStackTrace();
     }
@@ -288,6 +291,96 @@ public class RedisManagerImpl {
       Map<String, String> playerMap = jedis.hgetAll(CACHE_KEY);
       return playerMap.values().stream()
           .map(json -> gson.fromJson(json, RemotePlayerInfo.class))
+          .collect(Collectors.toList());
+    } catch (Exception e) {
+      return new ArrayList<>();
+    }
+  }
+
+  /**
+   * Add or update a queue in the cache.
+   *
+   * @param queue The queue to add or update.
+   */
+  public void addOrUpdateQueue(final ServerQueueStatus queue) {
+    if (this.jedisPool == null) {
+      return;
+    }
+
+    try (Jedis jedis = this.jedisPool.getResource()) {
+      jedis.hset(QUEUE_CACHE_KEY, queue.getServerName(), gson.toJson(new SerializableQueue(queue)));
+    } catch (JedisDataException ignored) {
+      // Ignore raw hash due to redundant logging.
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+  }
+
+  /**
+   * Updates the entry.
+   *
+   * @param serverQueueEntry The entry to update.
+   */
+  public void addOrUpdateEntry(final ServerQueueEntry serverQueueEntry) {
+    if (this.jedisPool == null) {
+      return;
+    }
+
+    ServerQueueStatus status = getQueue(serverQueueEntry.getTarget().getServerInfo().getName())
+        .convert(serverQueueEntry.getProxy(), serverQueueEntry.getTarget());
+    if (status == null) {
+      return;
+    }
+
+    ServerQueueEntry entry = status.getEntry(serverQueueEntry.getPlayer()).orElse(null);
+    if (entry == null) {
+      return;
+    }
+    entry.update(serverQueueEntry.getConnectionAttempts(), serverQueueEntry.isWaitingForConnection(),
+        serverQueueEntry.getPriority(),
+        serverQueueEntry.isFullBypass(),
+        serverQueueEntry.isQueueBypass());
+
+    addOrUpdateQueue(status);
+  }
+
+  /**
+   * Get a queue from the cache based on username.
+   *
+   * @param serverName The name of the server.
+   * @return The queue from the cache.
+   */
+  public SerializableQueue getQueue(final String serverName) {
+    if (this.jedisPool == null) {
+      return null;
+    }
+
+    try (Jedis jedis = this.jedisPool.getResource()) {
+      String json = jedis.hget(QUEUE_CACHE_KEY, serverName);
+      if (json == null) {
+        return null; // Key does not exist
+      }
+      return gson.fromJson(json, SerializableQueue.class);
+    } catch (Exception e) {
+      e.printStackTrace();
+      return null; // Return null in case of an error
+    }
+  }
+
+  /**
+   * Get all the queues from the cache.
+   *
+   * @return All the queues from the cache.
+   */
+  public List<SerializableQueue> getAllQueues() {
+    if (this.jedisPool == null) {
+      return new ArrayList<>();
+    }
+
+    try (Jedis jedis = this.jedisPool.getResource()) {
+      Map<String, String> queueMap = jedis.hgetAll(QUEUE_CACHE_KEY);
+      return queueMap.values().stream()
+          .map(json -> gson.fromJson(json, SerializableQueue.class))
           .collect(Collectors.toList());
     } catch (Exception e) {
       return new ArrayList<>();

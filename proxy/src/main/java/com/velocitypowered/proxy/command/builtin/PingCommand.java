@@ -108,8 +108,8 @@ public class PingCommand {
               .arguments(Component.text(ping))
       );
     } else {
-      if (server.getMultiProxyHandler().isEnabled()) {
-        if (!this.server.getMultiProxyHandler().isPlayerOnline(username)) {
+      if (server.getMultiProxyHandler().isRedisEnabled()) {
+        if (this.server.getMultiProxyHandler().isPlayerOnline(username)) {
           context.getSource().sendMessage(Component.translatable("velocity.command.player-not-found")
               .arguments(Component.text(username)));
           return -1;

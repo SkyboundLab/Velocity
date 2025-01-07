@@ -60,7 +60,7 @@ public class SendCommand {
       return;
     }
 
-    if (server.getMultiProxyHandler().isEnabled()) {
+    if (server.getMultiProxyHandler().isRedisEnabled()) {
       registerMultiProxy(true);
       return;
     }
@@ -213,7 +213,7 @@ public class SendCommand {
   }
 
   private int send(final CommandContext<CommandSource> context) {
-    if (server.getMultiProxyHandler().isEnabled()) {
+    if (server.getMultiProxyHandler().isRedisEnabled()) {
       return sendMultiProxy(context);
     }
     final String serverName = context.getArgument(SERVER_ARG, String.class);
@@ -361,7 +361,7 @@ public class SendCommand {
 
     final RegisteredServer targetServer = maybeServer.get();
 
-    if (!this.server.getMultiProxyHandler().isPlayerOnline(player)
+    if (this.server.getMultiProxyHandler().isPlayerOnline(player)
         && !Objects.equals(player, "all")
         && !Objects.equals(player, "current")
         && !player.startsWith("+")) {

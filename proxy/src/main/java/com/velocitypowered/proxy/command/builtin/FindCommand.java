@@ -75,7 +75,7 @@ public class FindCommand {
   }
 
   private int find(final CommandContext<CommandSource> context) {
-    if (server.getMultiProxyHandler().isEnabled()) {
+    if (server.getMultiProxyHandler().isRedisEnabled()) {
       return findMultiProxy(context);
     }
 
@@ -115,7 +115,7 @@ public class FindCommand {
 
   private int findMultiProxy(final CommandContext<CommandSource> context) {
     final String player = context.getArgument("player", String.class);
-    if (!server.getMultiProxyHandler().isPlayerOnline(player)) {
+    if (server.getMultiProxyHandler().isPlayerOnline(player)) {
       context.getSource().sendMessage(
               CommandMessages.PLAYER_NOT_FOUND.arguments(Component.text(player))
       );

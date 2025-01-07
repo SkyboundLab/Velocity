@@ -18,14 +18,12 @@
 package com.velocitypowered.proxy.redis.multiproxy;
 
 import com.velocitypowered.api.command.CommandSource;
-import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.server.RegisteredServer;
 import com.velocitypowered.proxy.VelocityServer;
 import com.velocitypowered.proxy.command.builtin.VelocityCommand;
 import com.velocitypowered.proxy.config.VelocityConfiguration;
 import com.velocitypowered.proxy.connection.client.ConnectedPlayer;
 import com.velocitypowered.proxy.plugin.virtual.VelocityVirtualPlugin;
-import com.velocitypowered.proxy.queue.ServerQueueStatus;
 import com.velocitypowered.proxy.redis.RedisManagerImpl;
 import java.util.Collections;
 import java.util.HashMap;
@@ -70,7 +68,7 @@ public class MultiProxyHandler {
 
     this.enabled = config.isEnabled() && config.getProxyId() != null;
 
-    if (!this.isEnabled()) {
+    if (!this.isRedisEnabled()) {
       return;
     }
 
@@ -174,23 +172,6 @@ public class MultiProxyHandler {
       );
     });
 
-    redisManager.listen(RedisUpdateQueuedServerRequest.ID, RedisUpdateQueuedServerRequest.class, it -> {
-      if (!this.server.getQueueManager().isMasterProxy()) {
-        return;
-      }
-
-      RemotePlayerInfo info = this.server.getMultiProxyHandler().getPlayerInfo(it.uuid());
-      if (info != null) {
-        for (ServerQueueStatus status : this.server.getQueueManager().getAll()) {
-          if (status.isQueued(it.uuid())) {
-            info.setQueuedServer(status.getServerName());
-            this.server.getRedisManager().addOrUpdatePlayer(info);
-            break;
-          }
-        }
-      }
-    });
-
     redisManager.send(new RedisStartupRequest(config.getProxyId()));
   }
 
@@ -220,7 +201,6 @@ public class MultiProxyHandler {
 
   private void handleJoin(final RemotePlayerInfo player) {
     this.server.getRedisManager().addOrUpdatePlayer(player);
-    this.server.getRedisManager().send(new RedisUpdateQueuedServerRequest(player.getUuid()));
   }
 
   /**
@@ -238,7 +218,7 @@ public class MultiProxyHandler {
    *
    * @return {@code true} if the multi-proxy setup is enabled; {@code false} otherwise
    */
-  public boolean isEnabled() {
+  public boolean isRedisEnabled() {
     return enabled;
   }
 
@@ -289,11 +269,8 @@ public class MultiProxyHandler {
     List<RemotePlayerInfo> allPlayers = this.server.getRedisManager().getCache();
     for (RemotePlayerInfo info : allPlayers) {
       if (info.getUuid().equals(player.getUniqueId()) || info.getUsername().equalsIgnoreCase(player.getUsername())) {
-        Player p = this.server.getPlayer(info.getUuid()).orElse(null);
-        if (p != null) {
-          p.disconnect(Component.translatable("velocity.error.already-connected-proxy.remote"));
-          return;
-        }
+        player.disconnect(Component.translatable("velocity.error.already-connected-proxy.remote"));
+        return;
       }
     }
 
@@ -434,7 +411,7 @@ public class MultiProxyHandler {
   }
 
   /**
-   * Checks if the player is still connected to any proxy on the network.
+   * Checks if the player is still connected to any proxy on the network by UUID.
    *
    * @param uuid The UUID of the player.
    *
@@ -445,15 +422,14 @@ public class MultiProxyHandler {
   }
 
   /**
-   * Checks if the player is still connected to any proxy on the network.
+   * Checks if the player is still connected to any proxy on the network by username.
    *
    * @param username The username of the player.
    *
    * @return Whether the player is connected to any proxy or not.
    */
   public boolean isPlayerOnline(final String username) {
-    return this.server.getRedisManager().getCache().stream().anyMatch(info -> info.getUsername().equalsIgnoreCase(username));
-
+    return this.server.getRedisManager().getCache().stream().noneMatch(info -> info.getUsername().equalsIgnoreCase(username));
   }
 
   /**

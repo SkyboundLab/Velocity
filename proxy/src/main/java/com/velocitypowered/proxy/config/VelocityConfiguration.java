@@ -492,10 +492,6 @@ public final class VelocityConfiguration implements ProxyConfig {
     return commands.isSendEnabled();
   }
 
-  public boolean isShowAllEnabled() {
-    return commands.isShowAllEnabled();
-  }
-
   public boolean isOverrideServerCommandUsage() {
     return commands.isOverrideServerCommandUsage();
   }
@@ -1102,8 +1098,6 @@ public final class VelocityConfiguration implements ProxyConfig {
     @Expose
     private boolean sendCommand = true;
     @Expose
-    private boolean showAllCommand = true;
-    @Expose
     private boolean overrideServerCommandUsage = false;
     @Expose
     private boolean transferEnabled = true;
@@ -1122,7 +1116,6 @@ public final class VelocityConfiguration implements ProxyConfig {
         this.hubCommand = config.getOrElse("hub-enabled", true);
         this.pingCommand = config.getOrElse("ping-enabled", true);
         this.sendCommand = config.getOrElse("send-enabled", true);
-        this.showAllCommand = config.getOrElse("showall-enabled", true);
         this.overrideServerCommandUsage = config.getOrElse("override-server-command-usage", false);
         this.transferEnabled = config.getOrElse("transfer-enabled", true);
       }
@@ -1164,10 +1157,6 @@ public final class VelocityConfiguration implements ProxyConfig {
       return sendCommand;
     }
 
-    public boolean isShowAllEnabled() {
-      return showAllCommand;
-    }
-
     public boolean isOverrideServerCommandUsage() {
       return overrideServerCommandUsage;
     }
@@ -1188,7 +1177,6 @@ public final class VelocityConfiguration implements ProxyConfig {
           + ", hubCommand=" + hubCommand
           + ", pingCommand=" + pingCommand
           + ", sendCommand=" + sendCommand
-          + ", showAllCommand=" + showAllCommand
           + ", overrideServerCommandUsage=" + overrideServerCommandUsage
           + '}';
     }
@@ -1576,6 +1564,8 @@ public final class VelocityConfiguration implements ProxyConfig {
     @Expose
     private double sendDelay;
     @Expose
+    private double queueDelay;
+    @Expose
     private double messageDelay;
     @Expose
     private double backendPingInterval;
@@ -1608,6 +1598,7 @@ public final class VelocityConfiguration implements ProxyConfig {
       this.allowMultiQueue = config.getOrElse("allow-multi-queue", false);
       this.multipleServerMessagingSelection = config.getOrElse("multiple-server-messaging-selection", "last");
       this.sendDelay = config.getOrElse("send-delay", 1.0);
+      this.queueDelay = config.getOrElse("queue-delay", 0.0);
       this.messageDelay = config.getOrElse("message-delay", 1.0);
       this.backendPingInterval = config.getOrElse("backend-ping-interval", 1.0);
       this.maxSendRetries = config.getOrElse("max-send-retries", 10);
@@ -1658,6 +1649,10 @@ public final class VelocityConfiguration implements ProxyConfig {
       return sendDelay;
     }
 
+    public double getQueueDelay() {
+      return this.queueDelay;
+    }
+
     public double getBackendPingInterval() {
       return backendPingInterval;
     }
@@ -1673,8 +1668,6 @@ public final class VelocityConfiguration implements ProxyConfig {
     public List<String> getNoQueueServers() {
       return noQueueServers;
     }
-
-
 
     public boolean shouldOverrideBungeeMessaging() {
       return overrideBungeeMessaging;
@@ -1702,6 +1695,7 @@ public final class VelocityConfiguration implements ProxyConfig {
           + ", maxSendRetries=" + maxSendRetries
           + ", messageDelay=" + messageDelay
           + ", sendDelay=" + sendDelay
+          + ", queueDelay=" + queueDelay
           + ", multipleServerMessagingSelection=" + multipleServerMessagingSelection
           + ", allowMultiQueue=" + allowMultiQueue
           + ", noQueueServers=" + noQueueServers

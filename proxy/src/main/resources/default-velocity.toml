@@ -131,7 +131,6 @@ find-enabled = true
 hub-enabled = true
 ping-enabled = true
 plist-enabled = true
-showall-enabled = true
 transfer-enabled = true
 
 # Whether to use the default "/server" output, or whether to override it with the "velocity.command.server.usage" key.
@@ -399,6 +398,9 @@ multiple-server-messaging-selection = "last"
 
 # How long the queue system should wait before sending each user to a server (in seconds).
 send-delay = 1.0
+
+# How long should the queue wait before resuming the sending of players to servers after the backend server is back online.
+queue-delay = 0.0
 
 # How long the queue system should wait before updating or sending a new action bar, chat message, or title/subtitle.
 message-delay = 1.0
