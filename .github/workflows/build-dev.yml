@@ -2,7 +2,7 @@ name: Build Development
 
 on:
   push:
-    branches: [libdeflate]
+    branches: [working]
 
 permissions:
   contents: write
@@ -32,10 +32,7 @@ jobs:
       run: echo "NAME=$(basename ${{ github.repository }})" >> $GITHUB_ENV
 
     - name: Upload Build
-      uses: marvinpinto/action-automatic-releases@master
+      uses: actions/upload-artifact@v4
       with:
-        title: "${{ env.NAME }}"
-        automatic_release_tag: "latest"
-        repo_token: "${{ secrets.GITHUB_TOKEN }}"
-        files: "*/build/libs/*.jar"
-        prerelease: false
+        name: "${{ env.NAME }}"
+        path: "*/build/libs/*.jar"
