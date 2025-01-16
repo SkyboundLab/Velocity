@@ -34,7 +34,7 @@ jobs:
     - uses: actions/upload-artifact@v4
       with:
         name: "${{ env.NAME }}"
-        files: "*/build/libs/*.jar"
+        path: "*/build/libs/*.jar"
 
     - name: Upload Build
       uses: marvinpinto/action-automatic-releases@master
