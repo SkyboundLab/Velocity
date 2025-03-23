@@ -197,7 +197,7 @@ public class ConnectedPlayer implements MinecraftConnectionAssociation, Player, 
   private @Nullable Locale effectiveLocale;
   private final @Nullable IdentifiedKey playerKey;
   private @Nullable ClientSettingsPacket clientSettingsPacket;
-  private final ChatQueue chatQueue;
+  private volatile ChatQueue chatQueue;
   private final ChatBuilderFactory chatBuilderFactory;
   private final List<String> attemptedServers;
 
@@ -255,6 +255,17 @@ public class ConnectedPlayer implements MinecraftConnectionAssociation, Player, 
 
   public ChatQueue getChatQueue() {
     return chatQueue;
+  }
+
+  /**
+   * Discards any messages still being processed by the {@link ChatQueue}, and creates a fresh state for future packets.
+   * This should be used on server switches, or whenever the client resets its own 'last seen' state.
+   */
+  public void discardChatQueue() {
+    // No need for atomic swap, should only be called from event loop
+    final ChatQueue oldChatQueue = chatQueue;
+    chatQueue = new ChatQueue(this);
+    oldChatQueue.close();
   }
 
   public BundleDelimiterHandler getBundleHandler() {
@@ -1037,7 +1048,7 @@ public class ConnectedPlayer implements MinecraftConnectionAssociation, Player, 
     }
 
     DisconnectEvent event = new DisconnectEvent(this, status);
-    server.getEventManager().fire(event).whenCompleteAsync((val, ex) -> {
+    server.getEventManager().fire(event).whenComplete((val, ex) -> {
       if (ex == null) {
         this.teardownFuture.complete(null);
       } else {
@@ -1120,7 +1131,7 @@ public class ConnectedPlayer implements MinecraftConnectionAssociation, Player, 
         this.getProtocolVersion().compareTo(ProtocolVersion.MINECRAFT_1_20_5) >= 0,
         "Player version must be 1.20.5 to be able to transfer to another host");
 
-    server.getEventManager().fire(new PreTransferEvent(this, address)).thenAcceptAsync((event) -> {
+    server.getEventManager().fire(new PreTransferEvent(this, address)).thenAccept((event) -> {
       if (event.getResult().isAllowed()) {
         InetSocketAddress resultedAddress = event.getResult().address();
         if (resultedAddress == null) {
@@ -1419,7 +1430,7 @@ public class ConnectedPlayer implements MinecraftConnectionAssociation, Player, 
           connection.getChannel().pipeline().get(MinecraftEncoder.class).setState(StateRegistry.CONFIG);
           // Make sure we don't send any play packets to the player after update start
           connection.addPlayPacketQueueHandler();
-        }, connection.eventLoop()).exceptionallyAsync((ex) -> {
+        }, connection.eventLoop()).exceptionally((ex) -> {
           logger.error("Error switching player connection to config state", ex);
           return null;
         });
@@ -1502,7 +1513,7 @@ public class ConnectedPlayer implements MinecraftConnectionAssociation, Player, 
     }
 
     private CompletableFuture<Impl> internalConnect() {
-      return this.getInitialStatus().thenComposeAsync(initialCheck -> {
+      return this.getInitialStatus().thenCompose(initialCheck -> {
         if (initialCheck.isPresent()) {
           return completedFuture(plainResult(initialCheck.get(), toConnect));
         }
@@ -1570,10 +1581,10 @@ public class ConnectedPlayer implements MinecraftConnectionAssociation, Player, 
 
         connectionInProgress = false;
       }, connection.eventLoop())
-          .exceptionallyAsync((ex) -> {
+          .exceptionally((ex) -> {
             connectionInProgress = false;
             return null;
-          }).thenApplyAsync(x -> x);
+          }).thenApply(x -> x);
     }
 
     @Override
@@ -1622,10 +1633,10 @@ public class ConnectedPlayer implements MinecraftConnectionAssociation, Player, 
 
         connectionInProgress = false;
       }, connection.eventLoop())
-          .exceptionallyAsync((ex) -> {
+          .exceptionally((ex) -> {
             connectionInProgress = false;
             return null;
-          }).thenApplyAsync(Result::isSuccessful);
+          }).thenApply(Result::isSuccessful);
     }
 
     @Override

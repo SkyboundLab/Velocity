@@ -113,6 +113,8 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
 
   private CompletableFuture<Void> configSwitchFuture;
 
+  private int failedTabCompleteAttempts;
+
   /**
    * Constructs a client play session handler.
    *
@@ -171,6 +173,7 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
 
   @Override
   public void deactivated() {
+    player.discardChatQueue();
     for (PluginMessagePacket message : loginPluginMessages) {
       ReferenceCountUtil.release(message);
     }
@@ -373,7 +376,7 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
                   backendConn.write(message);
                 }
               }
-            }, backendConn.eventLoop()).exceptionallyAsync((ex) -> {
+            }, backendConn.eventLoop()).exceptionally((ex) -> {
               logger.error("Exception while handling plugin message packet for {}", player, ex);
               return null;
             });
@@ -405,7 +408,7 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
         smc.write(packet);
         smc.setActiveSessionHandler(StateRegistry.CONFIG);
         smc.setAutoReading(true);
-      }, smc.eventLoop()).exceptionallyAsync((ex) -> {
+      }, smc.eventLoop()).exceptionally((ex) -> {
         logger.error("Error forwarding config state acknowledgement to server:", ex);
         return null;
       });
@@ -443,6 +446,13 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
         }, player.getConnection().eventLoop());
 
     return true;
+  }
+
+  @Override
+  public boolean handle(final JoinGamePacket packet) {
+    // Forward the packet as normal, but discard any chat state we have queued - the client will do this too
+    player.discardChatQueue();
+    return false;
   }
 
   @Override
@@ -664,6 +674,15 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
       return false;
     }
 
+    if (!server.getTabCompleteRateLimiter().attempt(player.getUniqueId())) {
+      if (server.getConfiguration().isKickOnTabCompleteRateLimit()
+          && failedTabCompleteAttempts++ >= server.getConfiguration().getKickAfterRateLimitedTabCompletes()) {
+        player.disconnect(Component.translatable("velocity.kick.tab-complete-rate-limit"));
+      }
+
+      return true;
+    }
+
     server.getCommandManager().offerBrigadierSuggestions(player, command)
         .thenAcceptAsync(suggestions -> {
           if (suggestions.isEmpty()) {
@@ -690,7 +709,7 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
             resp.getOffers().addAll(offers);
             player.getConnection().write(resp);
           }
-        }, player.getConnection().eventLoop()).exceptionallyAsync((ex) -> {
+        }, player.getConnection().eventLoop()).exceptionally((ex) -> {
           logger.error("Exception while handling command tab completion for player {} executing {}",
               player, command, ex);
           return null;
@@ -755,7 +774,7 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
                 player.getUsername(), command,
                 e);
           }
-        }, player.getConnection().eventLoop()).exceptionallyAsync((ex) -> {
+        }, player.getConnection().eventLoop()).exceptionally((ex) -> {
           logger.error(
               "Exception while finishing command tab completion,"
                   + " with request {} and response {}",
@@ -777,7 +796,7 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
             response.getOffers().add(new Offer(s));
           }
           player.getConnection().write(response);
-        }, player.getConnection().eventLoop()).exceptionallyAsync((ex) -> {
+        }, player.getConnection().eventLoop()).exceptionally((ex) -> {
           logger.error(
               "Exception while finishing regular tab completion,"
                   + " with request {} and response{}",

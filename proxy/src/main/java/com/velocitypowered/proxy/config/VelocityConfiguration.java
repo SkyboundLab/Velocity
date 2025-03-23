@@ -96,8 +96,6 @@ public final class VelocityConfiguration implements ProxyConfig {
   private final Query query;
   private final Metrics metrics;
   @Expose
-  private int maxCommandsPerSecond = 10;
-  @Expose
   private final Redis redis;
   @Expose
   private final Queue queue;
@@ -153,11 +151,10 @@ public final class VelocityConfiguration implements ProxyConfig {
                                 final boolean enablePlayerAddressLogging, final Servers servers, final ForcedHosts forcedHosts,
                                 final Commands commands, final Advanced advanced, final Query query, final Metrics metrics,
                                 final boolean forceKeyAuthentication, final boolean logPlayerConnections, final boolean logPlayerDisconnections,
-                                final boolean logOfflineConnections, final int maxCommandsPerSecond, final boolean disableForge,
-                                final boolean enforceChatSigning, final boolean translateHeaderFooter, final boolean logMinimumVersion,
-                                final String minimumVersion, final Redis redis, final Queue queue, final Map<String, List<String>> slashServers,
-                                final List<ServerLink> serverLinks, final List<ProxyAddress> proxyAddresses, final String dynamicProxyFilter,
-                                final Map<String, Integer> playerCaps) {
+                                final boolean logOfflineConnections, final boolean disableForge, final boolean enforceChatSigning,
+                                final boolean translateHeaderFooter, final boolean logMinimumVersion, final String minimumVersion, final Redis redis,
+                                final Queue queue, final Map<String, List<String>> slashServers, final List<ServerLink> serverLinks,
+                                final List<ProxyAddress> proxyAddresses, final String dynamicProxyFilter, final Map<String, Integer> playerCaps) {
     this.bind = bind;
     this.motd = motd;
     this.motdHover = motdHover;
@@ -179,7 +176,6 @@ public final class VelocityConfiguration implements ProxyConfig {
     this.forceKeyAuthentication = forceKeyAuthentication;
     this.logPlayerConnections = logPlayerConnections;
     this.logPlayerDisconnections = logPlayerDisconnections;
-    this.maxCommandsPerSecond = maxCommandsPerSecond;
     this.logOfflineConnections = logOfflineConnections;
     this.disableForge = disableForge;
     this.enforceChatSigning = enforceChatSigning;
@@ -341,6 +337,11 @@ public final class VelocityConfiguration implements ProxyConfig {
       valid = false;
     }
 
+    if (advanced.commandRateLimit < 0) {
+      logger.error("Invalid command rate limit {}", advanced.commandRateLimit);
+      valid = false;
+    }
+
     loadFavicon();
 
     return valid;
@@ -441,10 +442,6 @@ public final class VelocityConfiguration implements ProxyConfig {
     return forcedHosts.getForcedHosts();
   }
 
-  public long getMaxCommandsPerSecond() {
-    return maxCommandsPerSecond;
-  }
-
   @Override
   public int getCompressionThreshold() {
     return advanced.getCompressionThreshold();
@@ -522,6 +519,31 @@ public final class VelocityConfiguration implements ProxyConfig {
   @Override
   public int getReadTimeout() {
     return advanced.getReadTimeout();
+  }
+
+  @Override
+  public int getCommandRatelimit() {
+    return advanced.getCommandRateLimit();
+  }
+
+  @Override
+  public int getTabCompleteRatelimit() {
+    return advanced.getTabCompleteRateLimit();
+  }
+
+  @Override
+  public int getKickAfterRateLimitedTabCompletes() {
+    return advanced.getKickAfterRateLimitedTabCompletes();
+  }
+
+  @Override
+  public boolean isForwardCommandsIfRateLimited() {
+    return advanced.isForwardCommandsIfRateLimited();
+  }
+
+  @Override
+  public int getKickAfterRateLimitedCommands() {
+    return advanced.getKickAfterRateLimitedCommands();
   }
 
   public boolean isProxyProtocol() {
@@ -763,8 +785,6 @@ public final class VelocityConfiguration implements ProxyConfig {
       final boolean kickExisting = config.getOrElse("kick-existing-players", false);
       final boolean enablePlayerAddressLogging = config.getOrElse(
               "enable-player-address-logging", true);
-      final int maxCommandsPerSecond = config.getOrElse(
-              "max-commands-per-second", 10);
       final boolean logPlayerConnections = config.getOrElse(
               "log-player-connections", true);
       final boolean logPlayerDisconnections = config.getOrElse(
@@ -864,7 +884,6 @@ public final class VelocityConfiguration implements ProxyConfig {
               logPlayerConnections,
               logPlayerDisconnections,
               logOfflineConnections,
-              maxCommandsPerSecond,
               disableForge,
               enforceChatSigning,
               translateHeaderFooter,
@@ -1239,6 +1258,16 @@ public final class VelocityConfiguration implements ProxyConfig {
     @Expose
     private boolean enableReusePort = false;
     @Expose
+    private int commandRateLimit = 25;
+    @Expose
+    private boolean forwardCommandsIfRateLimited = true;
+    @Expose
+    private int kickAfterRateLimitedCommands = 0;
+    @Expose
+    private int tabCompleteRateLimit = 10;
+    @Expose
+    private int kickAfterRateLimitedTabCompletes = 0;
+    @Expose
     private boolean allowIllegalCharactersInChat = false;
     @Expose
     private String serverBrand = "{backend-brand} ({proxy-brand})";
@@ -1277,6 +1306,11 @@ public final class VelocityConfiguration implements ProxyConfig {
         this.logCommandExecutions = config.getOrElse("log-command-executions", false);
         this.acceptTransfers = config.getOrElse("accepts-transfers", false);
         this.enableReusePort = config.getOrElse("enable-reuse-port", false);
+        this.commandRateLimit = config.getIntOrElse("command-rate-limit", 25);
+        this.forwardCommandsIfRateLimited = config.getOrElse("forward-commands-if-rate-limited", true);
+        this.kickAfterRateLimitedCommands = config.getIntOrElse("kick-after-rate-limited-commands", 0);
+        this.tabCompleteRateLimit = config.getIntOrElse("tab-complete-rate-limit", 10); // very lenient
+        this.kickAfterRateLimitedTabCompletes = config.getIntOrElse("kick-after-rate-limited-tab-completes", 0);
         this.allowIllegalCharactersInChat = config.getOrElse("allow-illegal-characters-in-chat", false);
         this.serverBrand = config.getOrElse("server-brand", "{backend-brand} ({proxy-brand})");
         this.fallbackVersionPing = config.getOrElse("fallback-version-ping", "{proxy-brand} {protocol-min}-{protocol-max}");
@@ -1350,6 +1384,26 @@ public final class VelocityConfiguration implements ProxyConfig {
 
     public boolean isEnableReusePort() {
       return enableReusePort;
+    }
+
+    public int getCommandRateLimit() {
+      return commandRateLimit;
+    }
+
+    public boolean isForwardCommandsIfRateLimited() {
+      return forwardCommandsIfRateLimited;
+    }
+
+    public int getKickAfterRateLimitedCommands() {
+      return kickAfterRateLimitedCommands;
+    }
+
+    public int getTabCompleteRateLimit() {
+      return tabCompleteRateLimit;
+    }
+
+    public int getKickAfterRateLimitedTabCompletes() {
+      return kickAfterRateLimitedTabCompletes;
     }
 
     public boolean isAllowIllegalCharactersInChat() {

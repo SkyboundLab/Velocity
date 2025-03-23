@@ -94,9 +94,6 @@ ping-passthrough = "disabled"
 # If not enabled (default is true) player IP addresses will be replaced by <ip address withheld> in logs.
 enable-player-address-logging = true
 
-# Max commands a player can send in a second before being kicked. Set to -1 to disable.
-max-commands-per-second = 10
-
 # If false, disables logging for offline player connections.
 log-offline-connections = true
 
@@ -238,6 +235,27 @@ accepts-transfers = false
 # strategy of having a single thread accepting connections and distributing them to worker
 # threads. Disabled by default. Requires Linux or macOS.
 enable-reuse-port = false
+
+# How fast (in milliseconds) are clients allowed to send commands after the last command
+# By default this is 50ms (20 commands per second).
+command-rate-limit = 25
+
+# Should we forward commands to the backend upon being rate limited?
+# This will forward the command to the server instead of processing it on the proxy.
+# Since most server implementations have a rate limit, this will prevent the player
+# from being able to send excessive commands to the server.
+forward-commands-if-rate-limited = true
+
+# How many commands are allowed to be sent after the rate limit is hit before the player is kicked?
+# Setting this to 0 or lower will disable this feature.
+kick-after-rate-limited-commands = 0
+
+# How fast (in milliseconds) are clients allowed to send tab completions after the last tab completion.
+tab-complete-rate-limit = 10
+
+# How many tab completions are allowed to be sent after the rate limit is hit before the player is kicked?
+# Setting this to 0 or lower will disable this feature.
+kick-after-rate-limited-tab-completes = 0
 
 # Enables the execution of illegal characters in chat and only allows
 # or denies illegal characters that are executed through the proxy.
