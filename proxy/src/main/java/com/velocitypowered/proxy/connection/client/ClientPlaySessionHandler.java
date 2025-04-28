@@ -30,8 +30,6 @@ import com.velocitypowered.api.event.player.TabCompleteEvent;
 import com.velocitypowered.api.event.player.configuration.PlayerEnteredConfigurationEvent;
 import com.velocitypowered.api.network.ProtocolVersion;
 import com.velocitypowered.api.proxy.messages.ChannelIdentifier;
-import com.velocitypowered.api.proxy.messages.LegacyChannelIdentifier;
-import com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier;
 import com.velocitypowered.proxy.VelocityServer;
 import com.velocitypowered.proxy.connection.ConnectionTypes;
 import com.velocitypowered.proxy.connection.MinecraftConnection;
@@ -74,6 +72,7 @@ import com.velocitypowered.proxy.protocol.packet.config.FinishedUpdatePacket;
 import com.velocitypowered.proxy.protocol.packet.title.GenericTitlePacket;
 import com.velocitypowered.proxy.protocol.util.PluginMessageUtil;
 import com.velocitypowered.proxy.util.CharacterUtil;
+import com.velocitypowered.proxy.util.except.QuietRuntimeException;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
@@ -163,7 +162,7 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
   @Override
   public void activated() {
     configSwitchFuture = new CompletableFuture<>();
-    Collection<String> channels =
+    Collection<ChannelIdentifier> channels =
         server.getChannelRegistrar().getChannelsForProtocol(player.getProtocolVersion());
     if (!channels.isEmpty()) {
       PluginMessagePacket register = constructChannelsPacket(player.getProtocolVersion(), channels);
@@ -297,7 +296,7 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
 
   @Override
   public boolean handle(final PluginMessagePacket packet) {
-    // Handling edge case when packet with FML client handshake (state COMPLETE)
+    // Handling an edge case, when a packet with FML client handshake (state COMPLETE)
     // arrives after JoinGame packet from destination server
     VelocityServerConnection serverConn =
         (player.getConnectedServer() == null
@@ -311,20 +310,17 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
         logger.warn("A plugin message was received while the backend server was not "
             + "ready. Channel: {}. Packet discarded.", packet.getChannel());
       } else if (PluginMessageUtil.isRegister(packet)) {
-        List<String> channels = PluginMessageUtil.getChannels(packet);
-        List<ChannelIdentifier> channelIdentifiers = new ArrayList<>();
-        for (String channel : channels) {
-          try {
-            channelIdentifiers.add(MinecraftChannelIdentifier.from(channel));
-          } catch (IllegalArgumentException e) {
-            channelIdentifiers.add(new LegacyChannelIdentifier(channel));
-          }
-        }
+        List<ChannelIdentifier> channels =
+            PluginMessageUtil.getChannels(this.player.getClientsideChannels().size(), packet,
+                this.player.getProtocolVersion(), this.server);
+        player.getClientsideChannels().addAll(channels);
         server.getEventManager()
             .fireAndForget(
-                new PlayerChannelRegisterEvent(player, ImmutableList.copyOf(channelIdentifiers)));
+                new PlayerChannelRegisterEvent(player, ImmutableList.copyOf(channels)));
         backendConn.write(packet.retain());
       } else if (PluginMessageUtil.isUnregister(packet)) {
+        player.getClientsideChannels()
+            .removeAll(PluginMessageUtil.getChannels(0, packet, this.player.getProtocolVersion(), this.server));
         backendConn.write(packet.retain());
       } else if (PluginMessageUtil.isMcBrand(packet)) {
         String brand = PluginMessageUtil.readBrandMessage(packet.content());
@@ -398,10 +394,14 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
 
   @Override
   public boolean handle(final FinishedUpdatePacket packet) {
+    if (!player.getConnection().pendingConfigurationSwitch) {
+      throw new QuietRuntimeException("Not expecting reconfiguration");
+    }
     // Complete client switch
     player.getConnection().setActiveSessionHandler(StateRegistry.CONFIG);
     VelocityServerConnection serverConnection = player.getConnectedServer();
-    server.getEventManager().fireAndForget(new PlayerEnteredConfigurationEvent(player, serverConnection));
+    server.getEventManager()
+        .fireAndForget(new PlayerEnteredConfigurationEvent(player, serverConnection));
     if (serverConnection != null) {
       MinecraftConnection smc = serverConnection.ensureConnected();
       CompletableFuture.runAsync(() -> {
@@ -504,7 +504,7 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
     if (!writable) {
       // We might have packets queued from the server, so flush them now to free up memory. Make
       // sure to do it on a future invocation of the event loop, otherwise while the issue will
-      // fix itself, we'll still disable auto-reading and instead of backpressure resolution, we
+      // fix itself, we'll still disable auto-reading, and instead of backpressure resolution, we
       // get client timeouts.
       player.getConnection().eventLoop().execute(() -> player.getConnection().flush());
     }
@@ -557,8 +557,8 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
     final MinecraftConnection serverMc = destination.ensureConnected();
 
     if (!spawned) {
-      // The player wasn't spawned in yet, so we don't need to do anything special. Just send
-      // JoinGame.
+      // The player wasn't spawned in yet, so we don't need to do anything special.
+      // Send JoinGame.
       spawned = true;
       player.getConnection().delayedWrite(joinGame);
       // Required for Legacy Forge
@@ -576,7 +576,8 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
       }
     }
 
-    // Remove previous boss bars. These don't get cleared when sending JoinGame, thus the need to
+    // Remove previous boss bars.
+    // These don't get cleared when sending JoinGame, thus is needed to
     // track them.
     for (UUID serverBossBar : serverBossBars) {
       BossBarPacket deletePacket = new BossBarPacket();
@@ -588,10 +589,15 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
 
     // Tell the server about the proxy's plugin message channels.
     ProtocolVersion serverVersion = serverMc.getProtocolVersion();
-    final Collection<String> channels = server.getChannelRegistrar()
+    final Collection<ChannelIdentifier> channels = server.getChannelRegistrar()
         .getChannelsForProtocol(serverMc.getProtocolVersion());
     if (!channels.isEmpty()) {
       serverMc.delayedWrite(constructChannelsPacket(serverVersion, channels));
+    }
+
+    // Tell the server about this client's plugin message channels.
+    if (!player.getClientsideChannels().isEmpty()) {
+      serverMc.delayedWrite(constructChannelsPacket(serverVersion, player.getClientsideChannels()));
     }
 
     // If we had plugin messages queued during login/FML handshake, send them now.
@@ -617,7 +623,7 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
     // In order to handle switching to another server, you will need to send two packets:
     //
     // - The join game packet from the backend server, with a different dimension
-    // - A respawn with the correct dimension
+    // - A respawn with the correct dimension,
     //
     // Most notably, by having the client accept the join game packet, we can work around the need
     // to perform entity ID rewrites, eliminating potential issues from rewriting packets and
@@ -635,9 +641,9 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
   }
 
   private void doSafeClientServerSwitch(final JoinGamePacket joinGame) {
-    // Some clients do not behave well with the "fast" respawn sequence. In this case we will use
-    // a "safe" respawn sequence that involves sending three packets to the client. They have the
-    // same effect but tend to work better with buggier clients (Forge 1.8 in particular).
+    // Some clients do not behave well with the "fast" respawn sequence.
+    // In this case, we will use a "safe" respawn sequence that involves sending three packets to the client.
+    // They have the same effect but tend to work better with buggier clients (Forge 1.8 in particular).
 
     // Send the JoinGame packet itself, unmodified.
     player.getConnection().delayedWrite(joinGame);
@@ -682,6 +688,8 @@ public class ClientPlaySessionHandler implements MinecraftSessionHandler {
 
       return true;
     }
+
+    failedTabCompleteAttempts = 0;
 
     server.getCommandManager().offerBrigadierSuggestions(player, command)
         .thenAcceptAsync(suggestions -> {

@@ -17,7 +17,7 @@ import com.velocitypowered.api.proxy.player.ResourcePackInfo;
  * The proxy will wait on this event to finish before forwarding the resource pack to the user.
  * If this event is denied, it will retroactively send a DENIED status to the downstream
  * server in response.
- * If the downstream server has it set to "forced" it will forcefully disconnect the user.
+ * If the downstream server has it set to "forced," it will forcefully disconnect the user.
  */
 @AwaitingEvent
 public class ServerResourcePackSendEvent implements ResultedEvent<ResultedEvent.GenericResult> {
@@ -32,10 +32,7 @@ public class ServerResourcePackSendEvent implements ResultedEvent<ResultedEvent.
    * @param receivedResourcePack The resource pack the server sent.
    * @param serverConnection The connection this occurred on.
    */
-  public ServerResourcePackSendEvent(
-      final ResourcePackInfo receivedResourcePack,
-      final ServerConnection serverConnection
-  ) {
+  public ServerResourcePackSendEvent(final ResourcePackInfo receivedResourcePack, final ServerConnection serverConnection) {
     this.result = ResultedEvent.GenericResult.allowed();
     this.receivedResourcePack = receivedResourcePack;
     this.serverConnection = serverConnection;

@@ -45,6 +45,7 @@ import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
@@ -86,6 +87,8 @@ public final class VelocityConfiguration implements ProxyConfig {
   private boolean onlineModeKickExistingPlayers = false;
   @Expose
   private PingPassthroughMode pingPassthrough = PingPassthroughMode.DISABLED;
+  @Expose
+  private boolean samplePlayersInPing = false;
   private final Servers servers;
   private final ForcedHosts forcedHosts;
   @Expose
@@ -148,13 +151,14 @@ public final class VelocityConfiguration implements ProxyConfig {
                                 final boolean preventClientProxyConnections, final boolean announceForge,
                                 final PlayerInfoForwarding playerInfoForwardingMode, final byte[] forwardingSecret,
                                 final boolean onlineModeKickExistingPlayers, final PingPassthroughMode pingPassthrough,
-                                final boolean enablePlayerAddressLogging, final Servers servers, final ForcedHosts forcedHosts,
-                                final Commands commands, final Advanced advanced, final Query query, final Metrics metrics,
-                                final boolean forceKeyAuthentication, final boolean logPlayerConnections, final boolean logPlayerDisconnections,
-                                final boolean logOfflineConnections, final boolean disableForge, final boolean enforceChatSigning,
-                                final boolean translateHeaderFooter, final boolean logMinimumVersion, final String minimumVersion, final Redis redis,
-                                final Queue queue, final Map<String, List<String>> slashServers, final List<ServerLink> serverLinks,
-                                final List<ProxyAddress> proxyAddresses, final String dynamicProxyFilter, final Map<String, Integer> playerCaps) {
+                                final boolean samplePlayersInPing, final boolean enablePlayerAddressLogging, final Servers servers,
+                                final ForcedHosts forcedHosts, final Commands commands, final Advanced advanced, final Query query,
+                                final Metrics metrics, final boolean forceKeyAuthentication, final boolean logPlayerConnections,
+                                final boolean logPlayerDisconnections, final boolean logOfflineConnections, final boolean disableForge,
+                                final boolean enforceChatSigning, final boolean translateHeaderFooter, final boolean logMinimumVersion,
+                                final String minimumVersion, final Redis redis, final Queue queue, final Map<String, List<String>> slashServers,
+                                final List<ServerLink> serverLinks, final List<ProxyAddress> proxyAddresses, final String dynamicProxyFilter,
+                                final Map<String, Integer> playerCaps) {
     this.bind = bind;
     this.motd = motd;
     this.motdHover = motdHover;
@@ -166,6 +170,7 @@ public final class VelocityConfiguration implements ProxyConfig {
     this.forwardingSecret = forwardingSecret;
     this.onlineModeKickExistingPlayers = onlineModeKickExistingPlayers;
     this.pingPassthrough = pingPassthrough;
+    this.samplePlayersInPing = samplePlayersInPing;
     this.enablePlayerAddressLogging = enablePlayerAddressLogging;
     this.servers = servers;
     this.forcedHosts = forcedHosts;
@@ -546,6 +551,11 @@ public final class VelocityConfiguration implements ProxyConfig {
     return advanced.getKickAfterRateLimitedCommands();
   }
 
+  @Override
+  public int getChannelRegisterLimit() {
+    return advanced.getChannelRegisterLimit();
+  }
+
   public boolean isProxyProtocol() {
     return advanced.isProxyProtocol();
   }
@@ -564,6 +574,10 @@ public final class VelocityConfiguration implements ProxyConfig {
 
   public PingPassthroughMode getPingPassthrough() {
     return pingPassthrough;
+  }
+
+  public boolean getSamplePlayersInPing() {
+    return samplePlayersInPing;
   }
 
   public boolean isPlayerAddressLoggingEnabled() {
@@ -775,6 +789,7 @@ public final class VelocityConfiguration implements ProxyConfig {
               "player-info-forwarding-mode", PlayerInfoForwarding.NONE);
       final PingPassthroughMode pingPassthroughMode = config.getEnumOrElse("ping-passthrough",
               PingPassthroughMode.DISABLED);
+      final boolean samplePlayersInPing = config.getOrElse("sample-players-in-ping", false);
       final String bind = config.getOrElse("bind", "0.0.0.0:25565");
       final int maxPlayers = config.getIntOrElse("show-max-players", 500);
       final boolean onlineMode = config.getOrElse("online-mode", true);
@@ -873,6 +888,7 @@ public final class VelocityConfiguration implements ProxyConfig {
               forwardingSecret,
               kickExisting,
               pingPassthroughMode,
+              samplePlayersInPing,
               enablePlayerAddressLogging,
               new Servers(serversConfig),
               new ForcedHosts(forcedHostsConfig),
@@ -1089,10 +1105,10 @@ public final class VelocityConfiguration implements ProxyConfig {
         Map<String, List<String>> forcedHosts = new HashMap<>();
         for (UnmodifiableConfig.Entry entry : config.entrySet()) {
           if (entry.getValue() instanceof String) {
-            forcedHosts.put(entry.getKey(),
+            forcedHosts.put(entry.getKey().toLowerCase(Locale.ROOT),
                 ImmutableList.of(entry.getValue()));
           } else if (entry.getValue() instanceof List) {
-            forcedHosts.put(entry.getKey(),
+            forcedHosts.put(entry.getKey().toLowerCase(Locale.ROOT),
                 ImmutableList.copyOf((List<String>) entry.getValue()));
           } else {
             throw new IllegalStateException(
@@ -1258,7 +1274,7 @@ public final class VelocityConfiguration implements ProxyConfig {
     @Expose
     private boolean enableReusePort = false;
     @Expose
-    private int commandRateLimit = 25;
+    private int commandRateLimit = 50;
     @Expose
     private boolean forwardCommandsIfRateLimited = true;
     @Expose
@@ -1267,6 +1283,8 @@ public final class VelocityConfiguration implements ProxyConfig {
     private int tabCompleteRateLimit = 10;
     @Expose
     private int kickAfterRateLimitedTabCompletes = 0;
+    @Expose
+    private int channelRegisterLimit = 1024;
     @Expose
     private boolean allowIllegalCharactersInChat = false;
     @Expose
@@ -1306,11 +1324,12 @@ public final class VelocityConfiguration implements ProxyConfig {
         this.logCommandExecutions = config.getOrElse("log-command-executions", false);
         this.acceptTransfers = config.getOrElse("accepts-transfers", false);
         this.enableReusePort = config.getOrElse("enable-reuse-port", false);
-        this.commandRateLimit = config.getIntOrElse("command-rate-limit", 25);
+        this.commandRateLimit = config.getIntOrElse("command-rate-limit", 50);
         this.forwardCommandsIfRateLimited = config.getOrElse("forward-commands-if-rate-limited", true);
         this.kickAfterRateLimitedCommands = config.getIntOrElse("kick-after-rate-limited-commands", 0);
-        this.tabCompleteRateLimit = config.getIntOrElse("tab-complete-rate-limit", 10); // very lenient
+        this.tabCompleteRateLimit = config.getIntOrElse("tab-complete-rate-limit", 10);
         this.kickAfterRateLimitedTabCompletes = config.getIntOrElse("kick-after-rate-limited-tab-completes", 0);
+        this.channelRegisterLimit = config.getIntOrElse("channel-register-limit", 1024);
         this.allowIllegalCharactersInChat = config.getOrElse("allow-illegal-characters-in-chat", false);
         this.serverBrand = config.getOrElse("server-brand", "{backend-brand} ({proxy-brand})");
         this.fallbackVersionPing = config.getOrElse("fallback-version-ping", "{proxy-brand} {protocol-min}-{protocol-max}");
@@ -1406,6 +1425,10 @@ public final class VelocityConfiguration implements ProxyConfig {
       return kickAfterRateLimitedTabCompletes;
     }
 
+    public int getChannelRegisterLimit() {
+      return channelRegisterLimit;
+    }
+
     public boolean isAllowIllegalCharactersInChat() {
       return allowIllegalCharactersInChat;
     }
@@ -1447,6 +1470,12 @@ public final class VelocityConfiguration implements ProxyConfig {
           + ", logCommandExecutions=" + logCommandExecutions
           + ", acceptTransfers=" + acceptTransfers
           + ", enableReusePort=" + enableReusePort
+          + ", commandRateLimit=" + commandRateLimit
+          + ", forwardCommandsIfRateLimited=" + forwardCommandsIfRateLimited
+          + ", kickAfterRateLimitedCommands=" + kickAfterRateLimitedCommands
+          + ", tabCompleteRateLimit=" + tabCompleteRateLimit
+          + ", kickAfterRateLimitedTabCompletes=" + kickAfterRateLimitedTabCompletes
+          + ", channelRegisterLimit=" + channelRegisterLimit
           + ", allowIllegalCharactersInChat=" + allowIllegalCharactersInChat
           + '}';
     }
@@ -1781,6 +1810,7 @@ public final class VelocityConfiguration implements ProxyConfig {
           + ", removePlayerOnServerSwitch=" + removePlayerOnServerSwitch
           + ", maxSendRetries=" + maxSendRetries
           + ", messageDelay=" + messageDelay
+          + ", backendPingInterval=" + backendPingInterval
           + ", sendDelay=" + sendDelay
           + ", queueDelay=" + queueDelay
           + ", allowMultiQueue=" + allowMultiQueue
@@ -1789,6 +1819,7 @@ public final class VelocityConfiguration implements ProxyConfig {
           + ", leaveQueueAliases=" + leaveQueueAliases
           + ", queueAdminAliases=" + queueAdminAliases
           + ", masterProxyIds=" + masterProxyIds
+          + ", bannedReason=" + bannedReason
           + '}';
     }
   }

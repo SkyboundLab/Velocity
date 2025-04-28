@@ -50,7 +50,7 @@ public final class ServerPreConnectEvent implements
    * @param previousServer the server the player is connected to
    */
   public ServerPreConnectEvent(final Player player, final RegisteredServer originalServer,
-      @Nullable final RegisteredServer previousServer) {
+                               @Nullable final RegisteredServer previousServer) {
     this.player = Preconditions.checkNotNull(player, "player");
     this.originalServer = Preconditions.checkNotNull(originalServer, "originalServer");
     this.previousServer = previousServer;
@@ -77,9 +77,9 @@ public final class ServerPreConnectEvent implements
   }
 
   /**
-   * Returns the server that the player originally tried to connect to. To get the server the
-   * player will connect to, see the {@link ServerResult} of this event. To get the server the
-   * player is currently on when this event is fired, use {@link #getPreviousServer()}.
+   * Returns the server that the player originally tried to connect to.
+   * To get the server, the player will connect to, see the {@link ServerResult} of this event.
+   * To get the server, the player is currently on when this event is fired, use {@link #getPreviousServer()}.
    *
    * @return the server that the player originally tried to connect to
    */

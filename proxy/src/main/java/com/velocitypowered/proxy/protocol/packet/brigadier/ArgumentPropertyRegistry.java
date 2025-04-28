@@ -22,6 +22,7 @@ import static com.velocitypowered.api.network.ProtocolVersion.MINECRAFT_1_19_3;
 import static com.velocitypowered.api.network.ProtocolVersion.MINECRAFT_1_19_4;
 import static com.velocitypowered.api.network.ProtocolVersion.MINECRAFT_1_20_3;
 import static com.velocitypowered.api.network.ProtocolVersion.MINECRAFT_1_20_5;
+import static com.velocitypowered.api.network.ProtocolVersion.MINECRAFT_1_21_5;
 import static com.velocitypowered.proxy.protocol.packet.brigadier.ArgumentIdentifier.id;
 import static com.velocitypowered.proxy.protocol.packet.brigadier.ArgumentIdentifier.mapSet;
 import static com.velocitypowered.proxy.protocol.packet.brigadier.DoubleArgumentPropertySerializer.DOUBLE;
@@ -68,7 +69,7 @@ public final class ArgumentPropertyRegistry {
       new HashMap<>();
 
   private static <T extends ArgumentType<?>> void register(final ArgumentIdentifier identifier,
-      final Class<T> klazz, final ArgumentPropertySerializer<T> serializer) {
+                                                           final Class<T> klazz, final ArgumentPropertySerializer<T> serializer) {
     byIdentifier.put(identifier, serializer);
     byClass.put(klazz, serializer);
     classToId.put(klazz, identifier);
@@ -112,16 +113,16 @@ public final class ArgumentPropertyRegistry {
    * @param type the type to serialize
    */
   public static void serialize(final ByteBuf buf, final ArgumentType<?> type,
-      final ProtocolVersion protocolVersion) {
+                               final ProtocolVersion protocolVersion) {
     if (type instanceof PassthroughProperty) {
       final PassthroughProperty property = (PassthroughProperty) type;
-      writeIdentifier(buf, property.identifier(), protocolVersion);
-      if (property.result() != null) {
-        property.serializer().serialize(property.result(), buf, protocolVersion);
+      writeIdentifier(buf, property.getIdentifier(), protocolVersion);
+      if (property.getResult() != null) {
+        property.getSerializer().serialize(property.getResult(), buf, protocolVersion);
       }
     } else if (type instanceof ModArgumentProperty property) {
-      writeIdentifier(buf, property.identifier(), protocolVersion);
-      buf.writeBytes(property.data());
+      writeIdentifier(buf, property.getIdentifier(), protocolVersion);
+      buf.writeBytes(property.getData());
     } else {
       ArgumentPropertySerializer serializer = byClass.get(type.getClass());
       ArgumentIdentifier id = classToId.get(type.getClass());
@@ -142,7 +143,7 @@ public final class ArgumentPropertyRegistry {
    * @param protocolVersion the protocol version to use
    */
   public static void writeIdentifier(final ByteBuf buf, final ArgumentIdentifier identifier,
-      final ProtocolVersion protocolVersion) {
+                                     final ProtocolVersion protocolVersion) {
     if (protocolVersion.noLessThan(MINECRAFT_1_19)) {
       Integer id = identifier.getIdByProtocolVersion(protocolVersion);
       Preconditions.checkNotNull(id, "Don't know how to serialize type " + identifier);
@@ -192,7 +193,7 @@ public final class ArgumentPropertyRegistry {
 
           @Override
           public void serialize(final BoolArgumentType object, final ByteBuf buf,
-              final ProtocolVersion protocolVersion) {
+                                final ProtocolVersion protocolVersion) {
 
           }
         });
@@ -261,17 +262,20 @@ public final class ArgumentPropertyRegistry {
     register(id("minecraft:resource_key", mapSet(MINECRAFT_1_20_5, 46), mapSet(MINECRAFT_1_20_3, 45), mapSet(MINECRAFT_1_19_3, 44)),
         RegistryKeyArgumentList.ResourceKey.class,
         RegistryKeyArgumentList.ResourceKey.Serializer.REGISTRY);
+    register(id("minecraft:resource_selector", mapSet(MINECRAFT_1_21_5, 47)),
+        RegistryKeyArgumentList.ResourceSelector.class,
+        RegistryKeyArgumentList.ResourceSelector.Serializer.REGISTRY);
 
-    empty(id("minecraft:template_mirror", mapSet(MINECRAFT_1_20_5, 47), mapSet(MINECRAFT_1_20_3, 46), mapSet(MINECRAFT_1_19, 45))); // 1.19
-    empty(id("minecraft:template_rotation", mapSet(MINECRAFT_1_20_5, 48), mapSet(MINECRAFT_1_20_3, 47), mapSet(MINECRAFT_1_19, 46))); // 1.19
-    empty(id("minecraft:heightmap", mapSet(MINECRAFT_1_20_3, 49), mapSet(MINECRAFT_1_19_4, 47))); // 1.19.4
+    empty(id("minecraft:template_mirror", mapSet(MINECRAFT_1_21_5, 48), mapSet(MINECRAFT_1_20_5, 47), mapSet(MINECRAFT_1_20_3, 46), mapSet(MINECRAFT_1_19, 45))); // 1.19
+    empty(id("minecraft:template_rotation", mapSet(MINECRAFT_1_21_5, 49), mapSet(MINECRAFT_1_20_5, 48), mapSet(MINECRAFT_1_20_3, 47), mapSet(MINECRAFT_1_19, 46))); // 1.19
+    empty(id("minecraft:heightmap", mapSet(MINECRAFT_1_21_5, 50), mapSet(MINECRAFT_1_20_3, 49), mapSet(MINECRAFT_1_19_4, 47))); // 1.19.4
 
-    empty(id("minecraft:uuid", mapSet(MINECRAFT_1_20_5, 53), mapSet(MINECRAFT_1_20_3, 48), mapSet(MINECRAFT_1_19_4, 48),
+    empty(id("minecraft:uuid", mapSet(MINECRAFT_1_21_5, 54),mapSet(MINECRAFT_1_20_5, 53), mapSet(MINECRAFT_1_20_3, 48), mapSet(MINECRAFT_1_19_4, 48),
         mapSet(MINECRAFT_1_19, 47))); // added in 1.16
 
-    empty(id("minecraft:loot_table", mapSet(MINECRAFT_1_20_5, 50)));
-    empty(id("minecraft:loot_predicate", mapSet(MINECRAFT_1_20_5, 51)));
-    empty(id("minecraft:loot_modifier", mapSet(MINECRAFT_1_20_5, 52)));
+    empty(id("minecraft:loot_table", mapSet(MINECRAFT_1_21_5, 51), mapSet(MINECRAFT_1_20_5, 50)));
+    empty(id("minecraft:loot_predicate", mapSet(MINECRAFT_1_21_5, 52), mapSet(MINECRAFT_1_20_5, 51)));
+    empty(id("minecraft:loot_modifier", mapSet(MINECRAFT_1_21_5, 53), mapSet(MINECRAFT_1_20_5, 52)));
 
     // Crossstitch support
     register(id("crossstitch:mod_argument", mapSet(MINECRAFT_1_19, -256)), ModArgumentProperty.class, MOD);

@@ -54,6 +54,11 @@ public final class VelocityTranslationRegistry implements TranslationRegistry {
   }
 
   @Override
+  public boolean contains(@NotNull final String key, @NotNull final Locale locale) {
+    return false;
+  }
+
+  @Override
   public @NotNull Key name() {
     return backedRegistry.name();
   }
@@ -64,10 +69,7 @@ public final class VelocityTranslationRegistry implements TranslationRegistry {
   }
 
   @Override
-  public @Nullable Component translate(
-          @NotNull final TranslatableComponent component,
-          @NotNull final Locale locale
-  ) {
+  public @Nullable Component translate(@NotNull final TranslatableComponent component, @NotNull final Locale locale) {
     final MessageFormat translationFormat = backedRegistry.translate(component.key(), locale);
 
     if (translationFormat == null) {
@@ -116,10 +118,9 @@ public final class VelocityTranslationRegistry implements TranslationRegistry {
     }
 
     @Override
-    public Tag resolve(
-            final @NotNull String name,
-            final @NotNull ArgumentQueue arguments,
-            final @NotNull Context ctx
+    public Tag resolve(final @NotNull String name,
+                       final @NotNull ArgumentQueue arguments,
+                       final @NotNull Context ctx
     ) throws ParsingException {
       final int index = arguments.popOr("No argument number provided")
               .asInt().orElseThrow(() -> ctx.newException("Invalid argument number", arguments));

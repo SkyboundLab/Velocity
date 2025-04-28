@@ -70,7 +70,7 @@ public class SessionPlayerChatPacket implements MinecraftPacket {
 
   @Override
   public void decode(final ByteBuf buf, final ProtocolUtils.Direction direction,
-      final ProtocolVersion protocolVersion) {
+                     final ProtocolVersion protocolVersion) {
     this.message = ProtocolUtils.readString(buf, 256);
     this.timestamp = Instant.ofEpochMilli(buf.readLong());
     this.salt = buf.readLong();
@@ -80,12 +80,12 @@ public class SessionPlayerChatPacket implements MinecraftPacket {
     } else {
       this.signature = new byte[0];
     }
-    this.lastSeenMessages = new LastSeenMessages(buf);
+    this.lastSeenMessages = new LastSeenMessages(buf, protocolVersion);
   }
 
   @Override
   public void encode(final ByteBuf buf, final ProtocolUtils.Direction direction,
-      final ProtocolVersion protocolVersion) {
+                     final ProtocolVersion protocolVersion) {
     ProtocolUtils.writeString(buf, this.message);
     buf.writeLong(this.timestamp.toEpochMilli());
     buf.writeLong(this.salt);
@@ -93,7 +93,7 @@ public class SessionPlayerChatPacket implements MinecraftPacket {
     if (this.signed) {
       buf.writeBytes(this.signature);
     }
-    this.lastSeenMessages.encode(buf);
+    this.lastSeenMessages.encode(buf, protocolVersion);
   }
 
   @Override
@@ -108,7 +108,7 @@ public class SessionPlayerChatPacket implements MinecraftPacket {
   }
 
   /**
-   * Creates a new {@code SessionPlayerChatPacket} with the specified last seen messages.
+   * Creates a new {@code SessionPlayerChatPacket} with the specified last-seen messages.
    *
    * <p>This method constructs a new {@code SessionPlayerChatPacket} instance that retains the
    * current packet's properties, while updating the last seen messages.</p>

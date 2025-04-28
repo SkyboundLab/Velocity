@@ -19,7 +19,7 @@ import java.util.Optional;
 public interface ProxyConfig {
 
   /**
-   * Whether GameSpy 4 queries are accepted by the proxy.
+   * Whether the proxy accepts GameSpy 4 queries.
    *
    * @return queries enabled
    */
@@ -68,8 +68,9 @@ public interface ProxyConfig {
   int getShowMaxPlayers();
 
   /**
-   * Get whether the proxy is online mode. This determines if players are authenticated with Mojang.
-   * servers.
+   * Get whether the proxy is online mode.
+   * This determines if players are authenticated with Mojang's
+   * Authentication Servers.
    *
    * @return online mode enabled
    */
@@ -166,7 +167,7 @@ public interface ProxyConfig {
   /**
    * Get whether we should forward commands to the backend if the player is rate limited.
    *
-   * @return whether to forward commands if rate limited
+   * @return whether to forward commands if rate-limited
    */
   boolean isForwardCommandsIfRateLimited();
 
@@ -210,4 +211,11 @@ public interface ProxyConfig {
   default boolean isKickOnTabCompleteRateLimit() {
     return getKickAfterRateLimitedTabCompletes() > 0;
   }
+
+  /**
+   * Get the channel register limit a client can register.
+   *
+   * @return a channel limit that a client can register
+   */
+  int getChannelRegisterLimit();
 }

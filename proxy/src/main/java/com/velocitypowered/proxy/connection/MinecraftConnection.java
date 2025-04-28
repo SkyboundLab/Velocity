@@ -86,6 +86,7 @@ public class MinecraftConnection extends ChannelInboundHandlerAdapter {
   private static final Logger logger = LogManager.getLogger(MinecraftConnection.class);
 
   private final Channel channel;
+  public boolean pendingConfigurationSwitch = false;
   private SocketAddress remoteAddress;
   private StateRegistry state;
   private final Map<StateRegistry, MinecraftSessionHandler> sessionHandlers;
@@ -131,8 +132,7 @@ public class MinecraftConnection extends ChannelInboundHandlerAdapter {
     if (association != null && !knownDisconnect
         && !(activeSessionHandler instanceof StatusSessionHandler)
         && (!(association instanceof InitialInboundConnection)
-        || server.getConfiguration().isLogOfflineConnections())
-    ) {
+        || server.getConfiguration().isLogOfflineConnections())) {
 
       if (server.getConfiguration().isLogPlayerDisconnections()) {
         logger.info("{} has disconnected", association);
@@ -158,13 +158,13 @@ public class MinecraftConnection extends ChannelInboundHandlerAdapter {
 
       if (msg instanceof MinecraftPacket pkt) {
         if (!pkt.handle(activeSessionHandler)) {
-          activeSessionHandler.handleGeneric((MinecraftPacket) msg);
+          activeSessionHandler.handleGeneric(pkt);
         }
       } else if (msg instanceof HAProxyMessage proxyMessage) {
         this.remoteAddress = new InetSocketAddress(proxyMessage.sourceAddress(),
             proxyMessage.sourcePort());
-      } else if (msg instanceof ByteBuf) {
-        activeSessionHandler.handleUnknown((ByteBuf) msg);
+      } else if (msg instanceof ByteBuf buf) {
+        activeSessionHandler.handleUnknown(buf);
       }
     } finally {
       ReferenceCountUtil.release(msg);
@@ -236,7 +236,7 @@ public class MinecraftConnection extends ChannelInboundHandlerAdapter {
    * Writes and immediately flushes a message to the connection.
    *
    * @param msg the message to write
-   * @return A {@link ChannelFuture} that will complete when packet is successfully sent
+   * @return A {@link ChannelFuture} that will complete when a packet is successfully sent
    */
   @Nullable
   public ChannelFuture write(final Object msg) {
@@ -281,7 +281,7 @@ public class MinecraftConnection extends ChannelInboundHandlerAdapter {
           && this.getProtocolVersion().noLessThan(ProtocolVersion.MINECRAFT_1_7_2);
       if (is17 && this.getState() != StateRegistry.STATUS) {
         channel.eventLoop().execute(() -> {
-          // 1.7.x versions have a race condition with switching protocol states, so just explicitly
+          // 1.7.x versions have a race condition with switching protocol states, so explicitly
           // close the connection after a short while.
           this.setAutoReading(false);
           channel.eventLoop().schedule(() -> {
@@ -477,7 +477,7 @@ public class MinecraftConnection extends ChannelInboundHandlerAdapter {
    * Switches the active session handler to the respective registry one.
    *
    * @param registry the registry of the handler
-   * @return true if successful and handler is present
+   * @return true, if successful and handler is present
    */
   public boolean setActiveSessionHandler(final StateRegistry registry) {
     Preconditions.checkNotNull(registry);

@@ -19,18 +19,16 @@ package com.velocitypowered.proxy.queue;
 
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.server.RegisteredServer;
+import com.velocitypowered.api.scheduler.ScheduledTask;
 import com.velocitypowered.proxy.VelocityServer;
 import com.velocitypowered.proxy.config.VelocityConfiguration;
 import com.velocitypowered.proxy.connection.client.ConnectedPlayer;
 import com.velocitypowered.proxy.plugin.virtual.VelocityVirtualPlugin;
 import com.velocitypowered.proxy.queue.cache.QueueCacheRetriever;
 import com.velocitypowered.proxy.server.VelocityRegisteredServer;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import net.kyori.adventure.text.Component;
 
@@ -40,18 +38,15 @@ import net.kyori.adventure.text.Component;
 public abstract class QueueManager {
   protected final VelocityServer server;
   protected VelocityConfiguration.Queue config;
-  protected ScheduledFuture<?> tickMessageTaskHandle;
-  protected ScheduledFuture<?> tickPingingBackendTaskHandle;
-  private ScheduledFuture<?> sendingTaskHandle;
-
-  private static final int THREAD_COUNT = Math.max(1, Runtime.getRuntime().availableProcessors() / 8);
-  private static final ScheduledExecutorService SERVICE = Executors.newScheduledThreadPool(THREAD_COUNT);
+  protected ScheduledTask tickMessageTaskHandle;
+  protected ScheduledTask tickPingingBackendTaskHandle;
 
   private final boolean enabled;
 
   protected QueueCacheRetriever cache = null;
 
-  protected static Map<String, Long> LAST_TURNED_ONLINE_TIME = new HashMap<>();
+  protected static final Map<String, Long> LAST_TURNED_ONLINE_TIME = new ConcurrentHashMap<>();
+  private ScheduledTask sendingTaskHandle = null;
 
   /**
    * Initializes a new Queue Manager with the proxy and config.
@@ -112,13 +107,14 @@ public abstract class QueueManager {
    */
   public void scheduleTickMessage() {
     if (this.tickMessageTaskHandle != null) {
-      this.tickMessageTaskHandle.cancel(true);
+      this.tickMessageTaskHandle.cancel();
     }
 
-    this.tickMessageTaskHandle = SERVICE.scheduleAtFixedRate(this::tickMessageForAllPlayers,
-        (long) (config.getMessageDelay() * 1000),
-        (long) (config.getMessageDelay() * 1000),
-        TimeUnit.MILLISECONDS);
+    this.tickMessageTaskHandle = server.getScheduler()
+        .buildTask(VelocityVirtualPlugin.INSTANCE, this::tickMessageForAllPlayers)
+        .delay((long) (config.getMessageDelay() * 1000), TimeUnit.MILLISECONDS)
+        .repeat((long) (config.getMessageDelay() * 1000), TimeUnit.MILLISECONDS)
+        .schedule();
   }
 
   /**
@@ -127,13 +123,14 @@ public abstract class QueueManager {
    */
   public void schedulePingingBackend() {
     if (this.tickPingingBackendTaskHandle != null) {
-      this.tickPingingBackendTaskHandle.cancel(true);
+      this.tickPingingBackendTaskHandle.cancel();
     }
 
-    this.tickPingingBackendTaskHandle = SERVICE.scheduleAtFixedRate(this::tickPingingBackend,
-        (long) (config.getBackendPingInterval() * 1000),
-        (long) (config.getBackendPingInterval() * 1000),
-        TimeUnit.MILLISECONDS);
+    this.tickPingingBackendTaskHandle = server.getScheduler()
+        .buildTask(VelocityVirtualPlugin.INSTANCE, this::tickPingingBackend)
+        .delay((long) (config.getBackendPingInterval() * 1000), TimeUnit.MILLISECONDS)
+        .repeat((long) (config.getBackendPingInterval() * 1000), TimeUnit.MILLISECONDS)
+        .schedule();
   }
 
   /**
@@ -143,13 +140,13 @@ public abstract class QueueManager {
    */
   public void rescheduleTimerTask() {
     if (this.sendingTaskHandle != null) {
-      this.sendingTaskHandle.cancel(true);
+      this.sendingTaskHandle.cancel();
     }
 
-    this.sendingTaskHandle = SERVICE.scheduleAtFixedRate(this::tickSending,
-        (long) (config.getSendDelay() * 1000),
-        (long) (config.getSendDelay() * 1000),
-        TimeUnit.MILLISECONDS);
+    this.sendingTaskHandle = server.getScheduler()
+        .buildTask(VelocityVirtualPlugin.INSTANCE, this::tickSending)
+        .repeat((long) (config.getSendDelay() * 1000), TimeUnit.MILLISECONDS)
+        .schedule();
   }
 
   /**
@@ -220,8 +217,6 @@ public abstract class QueueManager {
       }
 
       s.ping().whenComplete((result, th) -> {
-        double queueDelay = this.server.getConfiguration().getQueue().getQueueDelay() * 1000;
-
         if (th != null) {
           queue.setStatus(ServerStatus.OFFLINE);
         }
@@ -231,10 +226,17 @@ public abstract class QueueManager {
           LAST_TURNED_ONLINE_TIME.put(queue.getServerName(), System.currentTimeMillis());
         }
 
-        if (th == null && System.currentTimeMillis()
-            >= LAST_TURNED_ONLINE_TIME.get(queue.getServerName()) + queueDelay
-            && queue.getStatus() == ServerStatus.WAITING) {
+        if (th == null && queue.getQueue().stream().anyMatch(ServerQueueEntry::isQueueBypass)) {
           queue.setStatus(ServerStatus.ONLINE);
+        }
+
+        final Long lastOnlineTime = LAST_TURNED_ONLINE_TIME.get(queue.getServerName());
+
+        if (th == null && lastOnlineTime != null && queue.getStatus() == ServerStatus.WAITING) {
+          double queueDelay = this.server.getConfiguration().getQueue().getQueueDelay() * 1000;
+          if (System.currentTimeMillis() >= lastOnlineTime + queueDelay) {
+            queue.setStatus(ServerStatus.ONLINE);
+          }
         }
 
         ServerStatus temp = queue.getStatus();
@@ -249,15 +251,10 @@ public abstract class QueueManager {
         }
 
         if (queue.isOnline()) {
-          final int maxPlayers = this.server.getConfiguration().getPlayerCaps().get(queue.getServerName());
-          long playerCount;
-          if (this.server.getMultiProxyHandler().isRedisEnabled()) {
-            playerCount = this.server.getMultiProxyHandler().getAllPlayers().stream().filter(info -> info.getServerName() != null
-                && info.getServerName().equalsIgnoreCase(queue.getServerName())).count();
-          } else {
-            playerCount = server.getPlayerCount();
-          }
-          queue.setFull(playerCount >= maxPlayers);
+          result.getPlayers().ifPresent(ping -> {
+            int max = server.getConfiguration().getPlayerCaps().getOrDefault(queue.getServerName(), ping.getMax());
+            queue.setFull(ping.getOnline() >= max);
+          });
         }
       });
     }
@@ -362,15 +359,11 @@ public abstract class QueueManager {
     }
 
     if (tickMessageTaskHandle != null) {
-      tickMessageTaskHandle.cancel(true);
+      tickMessageTaskHandle.cancel();
     }
 
     if (tickPingingBackendTaskHandle != null) {
-      tickPingingBackendTaskHandle.cancel(true);
-    }
-
-    if (sendingTaskHandle != null) {
-      sendingTaskHandle.cancel(true);
+      tickPingingBackendTaskHandle.cancel();
     }
   }
 

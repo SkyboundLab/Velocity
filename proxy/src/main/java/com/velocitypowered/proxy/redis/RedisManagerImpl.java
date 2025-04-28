@@ -43,6 +43,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -79,7 +80,6 @@ public class RedisManagerImpl {
 
   private @MonotonicNonNull JedisPool jedisPool;
   private final VelocityPubSub pubSub;
-  private final AsyncPlayerCache asyncPlayerCache;
 
   /**
    * Constructs a Redis manager using the given Velocity server instance to retrieve
@@ -94,9 +94,6 @@ public class RedisManagerImpl {
     if (redisConfig.isEnabled()) {
       this.start(redisConfig, velocityServer);
     }
-
-    int threadPoolSize = Math.max(1, Runtime.getRuntime().availableProcessors() / 8);
-    asyncPlayerCache = new AsyncPlayerCache(CACHE_KEY, jedisPool, gson, threadPoolSize);
 
     registerListeners(velocityServer);
   }
@@ -273,11 +270,15 @@ public class RedisManagerImpl {
    * @param player The player to update.
    */
   public void addOrUpdatePlayer(final RemotePlayerInfo player) {
-    if (this.jedisPool == null) {
-      return;
-    }
+    String json = gson.toJson(player);
 
-    asyncPlayerCache.addOrUpdatePlayer(player);
+    try (Jedis jedis = this.jedisPool.getResource()) {
+      jedis.hset(CACHE_KEY, player.getUuid().toString(), json);
+    } catch (JedisDataException ignored) {
+      // Ignore raw hash due to redundant logging.
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
   }
 
   /**
@@ -286,10 +287,27 @@ public class RedisManagerImpl {
    * @param info The player to update.
    */
   public void removePlayer(final RemotePlayerInfo info) {
-    if (this.jedisPool == null) {
-      return;
+    try (Jedis jedis = this.jedisPool.getResource()) {
+      jedis.hdel(CACHE_KEY, info.getUuid().toString());
+    } catch (Exception e) {
+      e.printStackTrace();
     }
-    asyncPlayerCache.removePlayer(info);
+  }
+
+  /**
+   * Checks if a player exists in the Redis cache.
+   *
+   * @param uniqueId the players UUID.
+   *
+   * @return whether the player exists or not.
+   */
+  public boolean containsPlayer(final UUID uniqueId) {
+    try (Jedis jedis = this.jedisPool.getResource()) {
+      return jedis.hexists(CACHE_KEY, uniqueId.toString());
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+    return false;
   }
 
   /**
@@ -298,10 +316,14 @@ public class RedisManagerImpl {
    * @return the list of players.
    */
   public List<RemotePlayerInfo> getCache() {
-    if (this.jedisPool == null) {
+    try (Jedis jedis = this.jedisPool.getResource()) {
+      Map<String, String> playerMap = jedis.hgetAll(CACHE_KEY);
+      return playerMap.values().stream()
+          .map(json -> gson.fromJson(json, RemotePlayerInfo.class))
+          .collect(Collectors.toList());
+    } catch (Exception e) {
       return new ArrayList<>();
     }
-    return asyncPlayerCache.getCache();
   }
 
   /**
@@ -402,9 +424,9 @@ public class RedisManagerImpl {
       poolConfig.setTestOnBorrow(true);
       poolConfig.setTestOnReturn(true);
       poolConfig.setTestWhileIdle(true);
-      poolConfig.setMinEvictableIdleTimeMillis(30000); // 30 seconds before removing stale connections
-      poolConfig.setTimeBetweenEvictionRunsMillis(15000); // Check stale connections every 15 sec
-      poolConfig.setNumTestsPerEvictionRun(-1); // Test all idle connections
+      poolConfig.setMinEvictableIdleTimeMillis(30000);
+      poolConfig.setTimeBetweenEvictionRunsMillis(15000);
+      poolConfig.setNumTestsPerEvictionRun(-1);
       
       JedisClientConfig clientConfig = DefaultJedisClientConfig.builder()
           .ssl(redisConfig.isUseSsl())

@@ -159,7 +159,7 @@ public class VelocityRegisteredServer implements RegisteredServer, ForwardingAud
    *
    * @param loop    the event loop to use
    * @param pingOptions the options to apply to this ping
-   * @return the server list ping response
+   * @return the server list's ping response
    */
   public CompletableFuture<ServerPing> ping(@Nullable final EventLoop loop, final PingOptions pingOptions) {
     if (server == null) {
@@ -209,10 +209,7 @@ public class VelocityRegisteredServer implements RegisteredServer, ForwardingAud
   }
 
   @Override
-  public boolean sendPluginMessage(
-          final @NotNull ChannelIdentifier identifier,
-          final @NotNull PluginMessageEncoder dataEncoder
-  ) {
+  public boolean sendPluginMessage(final @NotNull ChannelIdentifier identifier, final @NotNull PluginMessageEncoder dataEncoder) {
     requireNonNull(identifier);
     requireNonNull(dataEncoder);
     final ByteBuf buf = Unpooled.buffer();

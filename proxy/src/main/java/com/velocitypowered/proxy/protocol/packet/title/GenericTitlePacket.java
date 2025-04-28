@@ -104,12 +104,12 @@ public abstract class GenericTitlePacket implements MinecraftPacket {
 
   @Override
   public final void decode(final ByteBuf buf, final ProtocolUtils.Direction direction,
-      final ProtocolVersion version) {
+                           final ProtocolVersion version) {
     throw new UnsupportedOperationException(); // encode only
   }
 
   /**
-   * Creates a version and type dependent TitlePacket.
+   * Creates a version and type-dependent TitlePacket.
    *
    * @param type    Action the packet should invoke
    * @param version Protocol version of the target player
@@ -131,5 +131,4 @@ public abstract class GenericTitlePacket implements MinecraftPacket {
     packet.setAction(type);
     return packet;
   }
-
 }

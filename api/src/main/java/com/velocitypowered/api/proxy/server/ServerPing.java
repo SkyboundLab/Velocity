@@ -14,6 +14,7 @@ import com.velocitypowered.api.util.Favicon;
 import com.velocitypowered.api.util.ModInfo;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -34,7 +35,7 @@ public final class ServerPing {
   private final @Nullable ModInfo modinfo;
 
   public ServerPing(final Version version, @Nullable final Players players,
-      final net.kyori.adventure.text.Component description, @Nullable final Favicon favicon) {
+                    final net.kyori.adventure.text.Component description, @Nullable final Favicon favicon) {
     this(version, players, description, favicon, ModInfo.DEFAULT);
   }
 
@@ -48,8 +49,8 @@ public final class ServerPing {
    * @param modinfo the mods this server runs
    */
   public ServerPing(final Version version, @Nullable final Players players,
-      final net.kyori.adventure.text.Component description, @Nullable final Favicon favicon,
-      @Nullable final ModInfo modinfo) {
+                    final net.kyori.adventure.text.Component description, @Nullable final Favicon favicon,
+                    @Nullable final ModInfo modinfo) {
     this.version = Preconditions.checkNotNull(version, "version");
     this.players = players;
     this.description = Preconditions.checkNotNull(description, "description");
@@ -198,11 +199,22 @@ public final class ServerPing {
     /**
      * Uses the modified {@code players} array in the response.
      *
-     * @param players array of SamplePlayers to set
+     * @param players array of SamplePlayers to add
      * @return this builder, for chaining
      */
     public Builder samplePlayers(final SamplePlayer... players) {
       this.samplePlayers.addAll(Arrays.asList(players));
+      return this;
+    }
+
+    /**
+     * Uses the modified {@code players} collection in the response.
+     *
+     * @param players collection of SamplePlayers to add
+     * @return this builder, for chaining
+     */
+    public Builder samplePlayers(final Collection<SamplePlayer> players) {
+      this.samplePlayers.addAll(players);
       return this;
     }
 
@@ -273,7 +285,7 @@ public final class ServerPing {
     }
 
     /**
-     * Enables nulling Players in the response.
+     * Enables nullifying Players in the response.
      * This will display the player count as {@code ???}.
      *
      * @return this builder, for chaining
@@ -506,6 +518,10 @@ public final class ServerPing {
    */
   public static final class SamplePlayer {
 
+    public static final SamplePlayer ANONYMOUS = new SamplePlayer(
+        "Anonymous Player",
+        new UUID(0L, 0L)
+    );
     private final String name;
     private final UUID id;
 
